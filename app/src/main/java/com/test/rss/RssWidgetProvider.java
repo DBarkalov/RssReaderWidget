@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProvider;
 import android.content.Context;
 import android.content.Intent;
+import android.net.Uri;
 import android.util.Log;
 import android.widget.RemoteViews;
 
@@ -14,26 +15,42 @@ import java.util.Calendar;
 /**
  * Created by d.barkalov on 03.11.2015.
  */
-public class RssWidgetProvider  extends AppWidgetProvider {
+public class RssWidgetProvider extends AppWidgetProvider {
 
     private static final String TAG = "RssWidgetProvider";
+    private static final String ACTION_PREV = "com.test.rss.RssWidgetProvider.PREV";
+    private static final String ACTION_NEXT = "com.test.rss.RssWidgetProvider.NEXT";
+
 
     @Override
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
-        Log.d(TAG, "onUpdate");
-        final int N = appWidgetIds.length;
-
-        for (int i=0; i<N; i++) {
-            int appWidgetId = appWidgetIds[i];
-            updateAppWidget(context, appWidgetManager, appWidgetId, "loading...", "" );
+        for (int i = 0; i < appWidgetIds.length; ++i) {
+            Intent intent = new Intent(context, StackWidgetService.class);
+            intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetIds[i]);
+            intent.setData(Uri.parse(intent.toUri(Intent.URI_INTENT_SCHEME)));
+            RemoteViews rv = new RemoteViews(context.getPackageName(), R.layout.rss_widget);
+            rv.setRemoteAdapter(R.id.stack_view, intent);
+            rv.setOnClickPendingIntent(R.id.next, getNextIntent(appWidgetIds[i], context));
+            rv.setOnClickPendingIntent(R.id.prev, getPrevIntent(appWidgetIds[i], context));
+            appWidgetManager.updateAppWidget(appWidgetIds[i], rv);
         }
+        super.onUpdate(context, appWidgetManager, appWidgetIds);
     }
 
-
-    PendingIntent getLoadIntent(Context context){
-        Intent intent = new Intent(context, LoadRssService.class);
-        intent.setAction(LoadRssService.LOAD_RSS_ACTION);
-        return PendingIntent.getService(context, 0, intent, 0);
+    @Override
+    public void onReceive(Context context, Intent intent) {
+        if(intent.getAction().equals(ACTION_NEXT) || intent.getAction().equals(ACTION_PREV)) {
+            RemoteViews rv = new RemoteViews(context.getPackageName(), R.layout.rss_widget);
+            if (intent.getAction().equals(ACTION_NEXT)) {
+                rv.showNext(R.id.stack_view);
+            } else if (intent.getAction().equals(ACTION_PREV)) {
+                rv.showPrevious(R.id.stack_view);
+            }
+            AppWidgetManager mgr = AppWidgetManager.getInstance(context);
+            int widgetId = intent.getExtras().getInt(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
+            mgr.updateAppWidget(widgetId, rv);
+        }
+        super.onReceive(context, intent);
     }
 
     @Override
@@ -41,36 +58,37 @@ public class RssWidgetProvider  extends AppWidgetProvider {
         Log.d(TAG, "onEnabled");
         Calendar calendar = Calendar.getInstance();
         calendar.setTimeInMillis(System.currentTimeMillis());
-        AlarmManager alarm = (AlarmManager)context.getSystemService(Context.ALARM_SERVICE);
+        AlarmManager alarm = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         alarm.setRepeating(AlarmManager.RTC_WAKEUP, calendar.getTimeInMillis(), 1000 * 60 * 1, getLoadIntent(context));
     }
 
     @Override
     public void onDisabled(Context context) {
         Log.d(TAG, "onDisabled");
-        AlarmManager alarm = (AlarmManager)context.getSystemService(Context.ALARM_SERVICE);
+        AlarmManager alarm = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         alarm.cancel(getLoadIntent(context));
     }
 
-    static void updateAppWidget(Context context, AppWidgetManager appWidgetManager,
-                                int widgetId, String title, String text) {
-        Log.d(TAG, "updateAppWidget");
-        RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.rss_widget);
-        views.setTextViewText(R.id.title, title);
-        views.setTextViewText(R.id.text, text);
-        views.setOnClickPendingIntent(R.id.next, getNextIntent(context));
-        views.setOnClickPendingIntent(R.id.prev, getPrevIntent(context));
-
-
-        appWidgetManager.updateAppWidget(widgetId, views);
+    private PendingIntent getLoadIntent(Context context) {
+        Intent intent = new Intent(context, LoadRssService.class);
+        intent.setAction(LoadRssService.LOAD_RSS_ACTION);
+        return PendingIntent.getService(context, 0, intent, 0);
     }
 
-    private static PendingIntent getPrevIntent(Context context) {
-        return null;
+    private static PendingIntent getPrevIntent(int appWidgetId, Context context) {
+        Intent intent = new Intent(context, RssWidgetProvider.class);
+        intent.setAction(ACTION_PREV);
+        intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
+        return PendingIntent.getBroadcast(context, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT);
     }
 
-    private static PendingIntent getNextIntent(Context context) {
-        return null;
+    private static PendingIntent getNextIntent(int appWidgetId, Context context) {
+        Intent intent = new Intent(context, RssWidgetProvider.class);
+        intent.setAction(ACTION_NEXT);
+        intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
+        return PendingIntent.getBroadcast(context, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT);
     }
 
 }
